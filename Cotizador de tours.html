@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cotizador de tours</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef2ec;--sf:#fff;--tx:#12211a;--mu:#5d6b62;--gr:#1f6b4a;--rd:#c9302a;--bd:#d6ddd3;--mt:#fff;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1713;--sf:#1a251f;--tx:#eef3ee;--mu:#9db0a3;--gr:#4cb582;--rd:#ef6a62;--bd:#2d3b33;--mt:#0f1713;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1713;--sf:#1a251f;--tx:#eef3ee;--mu:#9db0a3;--gr:#4cb582;--rd:#ef6a62;--bd:#2d3b33;--mt:#0f1713;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.4 Barlow,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column}
+header{padding:12px 16px 10px;border-bottom:1px solid var(--bd);background:var(--sf)}
+h1{margin:0;font-size:20px;font-weight:700}
+#ctx{margin-top:2px;font-size:14px;color:var(--mu)}
+#chat{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:10px}
+.b{max-width:92%;padding:10px 12px;border-radius:14px;background:var(--sf);border:1px solid var(--bd);overflow-wrap:anywhere}
+.me{align-self:flex-end;background:var(--gr);color:var(--mt);border-color:var(--gr)}
+.bot{align-self:flex-start}
+.card{margin-top:8px;border-top:1px solid var(--bd);padding-top:8px}
+.card:first-child{margin-top:0;border-top:0;padding-top:0}
+.ct{font-weight:700;font-size:17px}
+.ct small{font-weight:400;color:var(--mu);font-size:14px}
+.row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dashed var(--bd)}
+.row:last-child{border-bottom:0}
+.row .l{flex:1;min-width:0}
+.pr{text-align:right;display:flex;flex-direction:column;white-space:nowrap}
+.pr b{font-size:18px;color:var(--gr)}
+.pr span{font-size:14px;color:var(--mu)}
+.pr span:last-child{color:var(--rd)}
+.note{margin-top:8px;font-size:13px;color:var(--mu)}
+.cp{margin-top:8px;font:inherit;font-weight:600;font-size:15px;padding:8px 12px;border-radius:10px;border:1px solid var(--gr);background:transparent;color:var(--gr);cursor:pointer}
+.row small{display:block;color:var(--mu);font-size:13px}
+.tot{border-top:2px solid var(--gr);margin-top:4px;padding-top:8px;border-bottom:0}
+#chips{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;border-top:1px solid var(--bd);background:var(--sf)}
+.chip{flex:none;font:inherit;font-size:15px;padding:7px 12px;border-radius:999px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);cursor:pointer}
+.chip:focus-visible,.cp:focus-visible,#go:focus-visible,#in:focus-visible{outline:2px solid var(--gr);outline-offset:2px}
+.bar{display:flex;gap:8px;padding:8px 12px 10px;background:var(--sf)}
+#in{flex:1;min-width:0;font:inherit;font-size:16px;padding:11px 12px;border-radius:12px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+#go{font:inherit;font-weight:700;padding:0 18px;border-radius:12px;border:0;background:var(--gr);color:var(--mt);cursor:pointer}
+</style>
+</head>
+<body>
+<header><h1>Cotizador de tours</h1><div id="ctx"></div></header>
+<div id="chat" aria-live="polite"></div>
+<div id="chips"></div>
+<div class="bar"><input id="in" type="text" placeholder="Ej. 2 personas ATV Monkey" autocomplete="off" enterkeyhint="send"><button id="go" type="button">Cotizar</button></div>
+<script>
+// PRECIOS: [USD público, MXN, MXN con seguro]. ATV: [sencilla, doble]. RZR: [1-2 pax, 3-4 pax, 5-6 pax].
+const R=[
+{id:'monkey',n:'Monkey',h:3,re:/monkey|mono|mokney/,atv:[[125,2250,2610],[160,2880,3240]],rzr:[[245,4410,4950],[310,5580,6120],[370,6660,7200]]},
+{id:'pueblos',n:'2 Pueblos',h:4,re:/pueblos/,atv:[[145,2610,2970],[175,3150,3510]],rzr:[[270,4860,5400],[335,6030,6570],[395,7110,7650]]},
+{id:'club',n:'Club en la Montaña',h:4,re:/club|montana/,atv:[[165,2970,3330],[200,3600,3960]],rzr:[[335,6030,6570],[370,6660,7200],[395,7110,7650]]},
+{id:'zip',n:'Combo Zip Line',h:4,re:/zip/,rzr:[[365,6570,7110],[480,8640,9180],[600,10800,11340]]},
+{id:'snorkel',n:'Combo Snorkel',h:4,re:/snorkel/,rzr:[[365,6570,7110],[445,8010,8550],[555,9990,10530]]}];
+const TL=['1-2','3-4','5-6'];
+const W={un:1,una:1,uno:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10};
+let ctx={route:null,veh:null,pax:null};
+const copies=[];
+const $=id=>document.getElementById(id);
+const f=n=>n.toLocaleString('es-MX');
+const norm=t=>t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+const esc=t=>t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const tier=x=>x<=2?0:x<=4?1:2;
+
+function parse(t){
+  t=norm(t);const o={};
+  for(const r of R)if(r.re.test(t)){o.route=r.id;break;}
+  if(o.route==='pueblos')t=t.replace(/(\b2|\bdos)\s*pueblos/,'pueblos');
+  if(/\batv|cuatri/.test(t))o.veh='atv';else if(/rzr|razor|rhino/.test(t))o.veh='rzr';
+  const m=t.match(/\d+/);let n=m?+m[0]:null;
+  if(n==null){const w=t.match(/\b(uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/);if(w)n=W[w[1]];}
+  if(n>0&&n<=30)o.pax=n;
+  return o;
+}
+
+function opts(r,veh,n){
+  if(veh==='atv'){
+    if(!r.atv)return null;
+    const [S,D]=r.atv,o=[];
+    o.push({l:n+(n>1?' ATV sencillas':' ATV sencilla'),c:S.map(v=>v*n),v:n});
+    if(n>1){const d=n>>1,od=n%2;
+      o.push({l:d+(d>1?' ATV dobles':' ATV doble')+(od?' + 1 sencilla':''),c:D.map((v,i)=>v*d+S[i]*od),v:d+od});}
+    return o;
+  }
+  const k=Math.floor(n/6),rm=n%6;let c=[0,0,0];
+  if(k)c=c.map((v,i)=>v+r.rzr[2][i]*k);
+  if(rm)c=c.map((v,i)=>v+r.rzr[tier(rm)][i]);
+  const l=n<=6?'1 RZR ('+TL[tier(n)]+' pax)':k+' RZR de 5-6 pax'+(rm?' + 1 RZR ('+TL[tier(rm)]+' pax)':'');
+  return [{l,c,v:k+(rm?1:0)}];
+}
+
+function bubble(who,html){
+  const d=document.createElement('div');d.className='b '+who;d.innerHTML=html;
+  $('chat').appendChild(d);$('chat').scrollTop=1e9;return d;
+}
+
+function upd(){
+  const r=R.find(x=>x.id===ctx.route);
+  $('ctx').textContent='Ruta: '+(r?r.n:'todas')+' · Vehículo: '+(ctx.veh?ctx.veh.toUpperCase():'ATV y RZR')+' · Personas: '+(ctx.pax||'—');
+}
+
+function answer(){
+  const n=ctx.pax;
+  if(!n){bubble('bot','¿Para cuántas personas? Toca un número o escríbelo.');return;}
+  const rs=ctx.route?R.filter(r=>r.id===ctx.route):R,vs=ctx.veh?[ctx.veh]:['atv','rzr'];
+  let html='',txt=[];
+  for(const r of rs){
+    let rows='';const lines=[];
+    for(const v of vs){
+      const o=opts(r,v,n);if(!o)continue;
+      for(const x of o){
+        const [u,m,s]=x.c,su=u+x.v*(v==='atv'?20:30);
+        rows+='<div class="row"><div class="l">'+v.toUpperCase()+': '+x.l+'</div><div class="pr"><b>$'+f(u)+' USD</b><span>$'+f(m)+' MXN</span><span>c/seguro: $'+f(su)+' USD · $'+f(s)+' MXN</span></div></div>';
+        lines.push(v.toUpperCase()+': '+x.l+' – $'+f(u)+' USD / $'+f(m)+' MXN (c/seguro $'+f(su)+' USD / $'+f(s)+' MXN)');
+      }
+    }
+    if(!rows)continue;
+    html+='<div class="card"><div class="ct">'+r.n+' <small>'+r.h+' hrs · '+n+(n>1?' personas':' persona')+'</small></div>'+rows+'</div>';
+    txt.push(r.n+' ('+r.h+' hrs) – '+n+(n>1?' personas':' persona')+'\n'+lines.join('\n'));
+  }
+  if(!html){bubble('bot','Esa ruta solo se hace en RZR. Cambia el vehículo a RZR para cotizarla.');return;}
+  const i=copies.push(txt.join('\n\n'))-1;
+  html+='<div class="note">Precios por vehículo. Seguro: $20 USD por ATV, $30 USD por RZR. ATV sencilla = 1 persona, doble = 2. Con más de 6 personas en RZR se suman vehículos.</div><button class="cp" type="button" onclick="cp('+i+',this)">Copiar para el cliente</button>';
+  bubble('bot',html);
+}
+
+function cp(i,b){
+  const t=copies[i];
+  const done=()=>{b.textContent='¡Copiado!';setTimeout(()=>{b.textContent='Copiar para el cliente'},1500)};
+  function fb(){try{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();done();}catch(e){b.textContent='No se pudo copiar';}}
+  try{navigator.clipboard.writeText(t).then(done,fb);}catch(e){fb();}
+}
+
+const NU='([0-9]+|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)';
+const nv=s=>/^[0-9]+$/.test(s)?+s:W[s];
+let last=null;
+function combo(t){
+  let s=norm(t).replace(/(2|dos) *pueblos/,'pueblos');
+  const it=[];
+  s=s.replace(new RegExp(NU+' *(?:atv|cuatris?|cuatrimotos?)? *(dobles?|sencill[ao]s?|singles?|individuales?)','g'),(a,q,k)=>{it.push({veh:'atv',dbl:k[0]==='d',q:nv(q)});return ' ';});
+  s=s.replace(new RegExp('(?:'+NU+' *)?rzrs?(?: *(?:de|para|con) *'+NU+' *(?:pax|personas?|pasajeros)?)?','g'),(a,q,p)=>{it.push({veh:'rzr',q:q?nv(q):1,p:p?nv(p):null});return ' ';});
+  return {it,s};
+}
+function tryCombo(t){
+  let rt=null,src=t,c=combo(t);
+  const ok=z=>z.it.some(x=>x.veh==='atv'||x.p!=null);
+  if(ok(c))last=t;
+  else{
+    const p=parse(t);
+    if(last&&p.route&&Object.keys(p).length===1){src=last;rt=p.route;c=combo(src);}
+    else return false;
+  }
+  rt=rt||parse(src).route||ctx.route;
+  if(!rt){bubble('bot','¿Para qué ruta? Toca una ruta abajo.');return true;}
+  const r=R.find(x=>x.id===rt);ctx.route=rt;upd();
+  let T=[0,0,0],su=0,pax=0,vc=0,rows='',lines=[],bad=null;
+  for(const x of c.it){
+    let u,ins,pp,lab;
+    if(x.veh==='atv'){
+      if(!r.atv){bad='Esa ruta solo se hace en RZR.';break;}
+      u=r.atv[x.dbl?1:0];ins=20;pp=x.dbl?2:1;
+      lab=x.q+' ATV '+(x.dbl?(x.q>1?'dobles':'doble'):(x.q>1?'sencillas':'sencilla'));
+    }else{
+      if(x.p==null){bad='¿De cuántas personas es cada RZR (1-2, 3-4 o 5-6)? Envíalo de nuevo con ese dato.';break;}
+      if(x.p<1||x.p>6){bad='Cada RZR lleva máximo 6 personas.';break;}
+      u=r.rzr[tier(x.p)];ins=30;pp=x.p;
+      lab=x.q+' RZR de '+x.p+' pax';
+    }
+    const q=x.q,a=u[0]*q,b=u[1]*q,d=u[2]*q,e=a+ins*q;
+    T[0]+=a;T[1]+=b;T[2]+=d;su+=e;pax+=pp*q;vc+=q;
+    rows+=`<div class='row'><div class='l'>${lab}<small>${q} × $${f(u[0])} USD</small></div><div class='pr'><b>$${f(a)} USD</b><span>$${f(b)} MXN</span><span>c/seguro: $${f(e)} USD · $${f(d)} MXN</span></div></div>`;
+    lines.push(lab+' – $'+f(a)+' USD / $'+f(b)+' MXN (c/seguro $'+f(e)+' USD / $'+f(d)+' MXN)');
+  }
+  if(bad){bubble('bot',bad);return true;}
+  const m=c.s.match(/([0-9]+) *(?:personas|pax)/);
+  const warn=m&&+m[1]!==pax?`<div class='note'>Ojo: pediste ${m[1]} personas y esta combinación suma ${pax}.</div>`:'';
+  rows+=`<div class='row tot'><div class='l'><b>Total</b><small>${vc} vehículos · ${pax} personas</small></div><div class='pr'><b>$${f(T[0])} USD</b><span>$${f(T[1])} MXN</span><span>c/seguro: $${f(su)} USD · $${f(T[2])} MXN</span></div></div>`;
+  lines.push('TOTAL: $'+f(T[0])+' USD / $'+f(T[1])+' MXN (c/seguro $'+f(su)+' USD / $'+f(T[2])+' MXN)');
+  const i=copies.push(r.n+' ('+r.h+' hrs) – '+pax+' personas\n'+lines.join('\n'))-1;
+  bubble('bot',`<div class='card'><div class='ct'>${r.n} <small>${r.h} hrs · ${pax} personas</small></div>${rows}</div>${warn}<div class='note'>ATV doble = 2 personas, sencilla = 1. Precios por vehículo; seguro $20 USD por ATV y $30 USD por RZR.</div><button class='cp' type='button' onclick='cp(${i},this)'>Copiar para el cliente</button>`);
+  return true;
+}
+function send(t){
+  t=t.trim();if(!t)return;
+  bubble('me',esc(t));
+  if(/^(reiniciar|nueva|borrar)/.test(norm(t))){ctx={route:null,veh:null,pax:null};upd();bubble('bot','Listo, empezamos de nuevo.');return;}
+  if(tryCombo(t))return;
+  const p=parse(t);
+  if(!Object.keys(p).length){bubble('bot','No entendí. Prueba con algo como <b>2 personas ATV Monkey</b> o <b>4 RZR Snorkel</b>.');return;}
+  Object.assign(ctx,p);upd();answer();
+}
+
+function chip(label,text){
+  const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=label;
+  b.onclick=()=>send(text||label);$('chips').appendChild(b);
+}
+['1','2','3','4','5','6'].forEach(x=>chip(x));
+chip('ATV');chip('RZR');
+R.forEach(r=>chip(r.n));
+chip('Reiniciar');
+
+$('go').onclick=()=>{send($('in').value);$('in').value='';};
+$('in').addEventListener('keydown',e=>{if(e.key==='Enter'){send($('in').value);$('in').value='';}});
+upd();
+bubble('bot','Hola. Escribe lo que necesitas, por ejemplo <b>2 personas ATV Monkey</b>. Para combinar vehículos escribe, por ejemplo, <b>Pueblos 4 atv dobles, 3 atv sencillas y 1 rzr de 4 personas</b>. Si no indicas ruta o vehículo, te muestro todas las opciones.');
+</script>
+</body>
+</html>
